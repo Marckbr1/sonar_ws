@@ -1,0 +1,8 @@
+<launch>
+
+  <!-- Visualization -->
+  <node pkg="rqt_gui" name="son_sat_view" type="rqt_gui"
+     respawn="false" output="screen"
+     args="--perspective-file $(find quad_amcl)/cfg/pf_viewer.perspective"/>
+
+</launch>

@@ -1,0 +1,20 @@
+<launch>
+
+  <arg name="img_folder" default="$(find quad_amcl)/imgs/"/>
+  <arg name="model_path" default="$(find quad_amcl)/models"/>
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${node}]: ${message}"/>
+
+  <node pkg="quad_amcl" name="particle_filter" type="particle_filter"
+        respawn="false" output="screen">
+        <param name="image_transport" value="compressed"/>
+        <param name="map_path" value="$(find quad_amcl)/maps/Yacht_Club_RG/2017-08-06.ini"/>
+  </node>
+
+<!--
+  <node pkg="rosbag" name="rosbag_play" type="play"
+        respawn="false" args="$(find quad_amcl)/bags/ARACATI_2017.bag -q">
+  </node>
+-->
+
+</launch>

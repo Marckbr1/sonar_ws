@@ -1,0 +1,48 @@
+Visualization Manager:
+  Class: ""
+  Displays:
+    - Name: Map Image
+      Class: rviz/Image
+      Enabled: true
+      Image Topic: /map_img
+      Normalize Range: true
+      Transport Hint: compressed
+    - Name: Pose GT
+      Class: rviz/Pose
+      Enabled: true
+      Topic: /pose_gt
+      Color: 255; 0; 0
+      Alpha: 1
+      Shaft Length: 1
+      Shaft Radius: 0.05
+      Head Length: 0.3
+      Head Radius: 0.1
+    - Name: Particles
+      Class: rviz/PoseArray
+      Enabled: true
+      Topic: /particles_view
+      Color: 0; 255; 0
+      Alpha: 0.8
+      Arrow Length: 0.6
+    - Name: PF Pose
+      Class: rviz/Pose
+      Enabled: true
+      Topic: /pf_pose
+      Color: 0; 0; 255
+      Alpha: 1
+      Shaft Length: 1
+      Shaft Radius: 0.05
+      Head Length: 0.3
+      Head Radius: 0.1
+    - Name: Grid
+      Class: rviz/Grid
+      Enabled: true
+      Plane Cell Count: 20
+      Color: 160; 160; 160
+      Alpha: 0.3
+  Global Options:
+    Background Color: 48; 48; 48
+    Fixed Frame: utm
+    Frame Rate: 30
+    Name: root
+  Name: Visualization Manager

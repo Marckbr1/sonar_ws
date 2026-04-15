@@ -1,0 +1,58 @@
+<launch>
+
+<!--
+ $ roslaunch quad_amcl test_son.launch \
+   bag_file:=/media/auros/AuRos_Xavier/tmp2/ARACATI_2017_16bits.bag
+-->
+
+  <arg name="model_path" default="$(find quad_amcl)/models"/>
+  <arg name="map_path" default="$(find quad_amcl)/maps/Yacht_Club_RG/2017-08-06_seg.ini"/>
+  <arg name="bag_file" default="$(find quad_amcl)/bags/ARACATI_2017.bag"/>
+  <arg name="viewer" default="true"/>
+  <arg name="record" default="false"/>
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${node}]: ${message}"/>
+  <env name="TF_FORCE_GPU_ALLOW_GROWTH" value="true"/>
+
+  <param name="use_sim_time" value="true"/>
+
+  <node pkg="quad_amcl" name="son_enhancement" type="son_enhancement"
+        respawn="false" output="screen">
+    <param name="image_transport" value="compressed"/>
+    <param name="map_path" value="$(arg map_path)"/>
+    <param name="test" value="false"/>
+    <param name="orientation_test" value="false"/>
+    <param name="disable_orientation" value="true"/>
+
+    <remap from="pose" to="pose_gt"/>
+  </node>
+
+  <!-- Bag play 1800 -->
+  <node pkg="rosbag" name="rosbag_play" type="play"
+        respawn="false" output="screen"
+        args="$(arg bag_file) --clock -r 1.0 -s 3100 -q --pause">
+  </node>
+
+  <!-- Visualization -->
+  <node if="$(arg viewer)" pkg="rqt_gui" name="son_view" type="rqt_gui"
+     respawn="false" output="screen"
+     args="--perspective-file $(find quad_amcl)/cfg/son_viewer.perspective"/>
+
+  <!-- Record -->
+  <node if="$(arg record)" pkg="rosbag" name="rosbag_record" type="record"
+     respawn="false"
+     args="-O $(find quad_amcl)/bags/result.bag
+        /son_small
+        /son/compressed
+        /pf_pose
+        /pf_avg5_pose
+        /pf_avg10_pose
+        /pf_avg15_pose
+        /odom_pose
+        /sat_crop
+        /pose_gt
+        /map_img
+        /particles_view">
+  </node>
+
+</launch>

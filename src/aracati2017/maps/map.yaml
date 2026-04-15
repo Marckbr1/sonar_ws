@@ -1,0 +1,19 @@
+%YAML:1.0
+---
+p1:
+  x: 325          # Coordenada X en metros
+  y: -705         # Coordenada Y en metros  
+  pix_x: 426
+  pix_y: 336
+
+p2:
+  x: 315
+  y: -725
+  pix_x: 560
+  pix_y: 403
+
+p3:
+  x: 305
+  y: -715
+  pix_x: 493
+  pix_y: 470

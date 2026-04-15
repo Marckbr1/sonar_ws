@@ -1,0 +1,18 @@
+<launch>
+
+  <arg name="img_folder" default="$(find quad_amcl)/imgs/"/>
+  <arg name="model_path" default="$(find quad_amcl)/models"/>
+
+  <env name="ROSCONSOLE_FORMAT" value="[${severity}] [${node}]: ${message}"/>
+
+  <node pkg="quad_amcl" name="image_loader" type="image_loader"
+        respawn="false" output="screen">
+    <param name="folder" value="$(arg img_folder)"/>
+  </node>
+
+  <node pkg="quad_amcl" name="quadruplet" type="quadruplet.py"
+        respawn="false" output="screen">
+    <param name="model_path" value="$(arg model_path)"/>
+  </node>
+
+</launch>
