@@ -1,7 +1,7 @@
 <launch>
 
   <arg name="model_path" default="$(find quad_amcl)/models"/>
-  <arg name="map_path" default="$(find quad_amcl)/maps/Yacht_Club_RG/2017-08-06_seg.ini"/>
+  <arg name="map_path" default="$(find quad_amcl)/maps/Yacht_Club_RG/map.ini"/>
   <arg name="bag_file" />
   <arg name="viewer" default="true"/>
   <arg name="record" default="true"/>

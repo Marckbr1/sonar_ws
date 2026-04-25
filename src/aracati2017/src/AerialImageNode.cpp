@@ -127,9 +127,10 @@ void AerialImageNode::gtPoseCallback(const geometry_msgs::PoseStamped &msg)
                                            msg.pose.position.y);
 
     gtPts.push(UTMSonPosition);
-    // lastHeading = tf2::getYaw(msg.pose.orientation) ;
-    lastHeading = tf2::getYaw(msg.pose.orientation) * 180.0 / M_PI ;
-    ROS_INFO("Heading: %.1f grados", lastHeading);
+    lastHeading = tf2::getYaw(msg.pose.orientation) ;
+    // double lastHeading = lastHeading01 - (M_PI / 2.0)
+    // lastHeading = tf2::getYaw(msg.pose.orientation) * 180.0 / M_PI ;
+    // ROS_INFO("Heading: %.1f grados", lastHeading);
 
 
 
@@ -202,6 +203,7 @@ void AerialImageNode::publishAerialImg()
   if(!gtPts.empty())
   {
     const Point2d &UTMSonPosition = gtPts.last();
+    
       
     // // DEBUG: Imprime información
     // cout << "=== SONAR DEBUG ===" << endl;

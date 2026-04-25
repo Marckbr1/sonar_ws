@@ -209,7 +209,7 @@ target_include_directories (satellite_manager PUBLIC src/libs/SatelliteManager/)
 
 # ====== FGR ======
 set(FastGlobalRegistration_SOURCE_DIR
-   "/home/marck/source/")
+   "/root/source/")
 
 set_property(GLOBAL PROPERTY USE_FOLDERS ON)
 

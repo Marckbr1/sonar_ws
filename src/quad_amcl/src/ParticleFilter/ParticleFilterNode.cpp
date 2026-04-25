@@ -798,7 +798,7 @@ void ParticleFilterNode::evaluateParticlesObservation(const ros::Time &time)
                                130.0);
     if(img.empty())
     {
-      ROS_ERROR("Could not crop sat img");
+      ROS_ERROR("Could not crop sat img, Si es");
       continue;
     }
 

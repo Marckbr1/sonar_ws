@@ -12,9 +12,9 @@
     <param name="base_frame_id" value="son" />
   </node>
 
-  <!-- 2. GPS Simulator (para que aerial_image no se quede esperando) -->
+  <!-- 2. GPS Simulator (para que aerial_image no se quede esperando) 
   <node pkg="aracati2017" name="gps_simulator" type="gps_simulator.py" output="screen">
-  </node>
+  </node>-->
   
 
   <node pkg="aracati2017" name="aerial_image"
