@@ -220,33 +220,66 @@ bool SatelliteManager::loadMap(const path &mapPath)
 
 Point2d SatelliteManager::UTM2Img(const Point2d &UTMp) const
 {
-    Point2d p(imgRef[0].x + (UTMp.x - UTMRef[0].x)*UTM2Img_.x,
-              imgRef[0].y + (UTMp.y - UTMRef[0].y)*UTM2Img_.y);
+
+    static const cv::Mat M = (cv::Mat_<double>(3,3) << 
+        2.23875619e-14, -6.7, -4297.5,
+        -6.7, -2.66197567e-15, 2513.5,
+        0.0,  0.0,             1.0);
+
+    cv::Mat pt = (cv::Mat_<double>(3,1) << UTMp.x, UTMp.y, 1.0);
+    cv::Mat res = M * pt;
+
+    Point2d p(res.at<double>(0, 0), res.at<double>(1, 0));
     return p;
+
+    // Point2d p(imgRef[0].x + (UTMp.x - UTMRef[0].x)*UTM2Img_.x,
+    //           imgRef[0].y + (UTMp.y - UTMRef[0].y)*UTM2Img_.y);
+    // return p;
 }
+
 
 Point2d SatelliteManager::Img2UTM(const Point2d &ImgP) const
 {
-
-    // Definir matriz 3x3
-    cv::Mat M = (cv::Mat_<double>(3,3) << 5.92999703e-17, -1.49253731e-01,  3.75149254e+02,
-                                         -1.49253731e-01,  4.98720470e-16, -6.41417910e+02,
-                                          0, 0, 1);
-
-    cv::Mat p1 = (cv::Mat_<double>(3, 1) << ImgP.x, ImgP.y, 1.0);
-    cv::Mat resultado = M * p1;
-    cv::Point2d p(resultado.at<double>(0), resultado.at<double>(1));
+    Point2d p(UTMRef[0].x + (ImgP.x - imgRef[0].x)/UTM2Img_.x,
+              UTMRef[0].y + (ImgP.y - imgRef[0].y)/UTM2Img_.y);
     
-    // First bring img point to the origin (reference point 0)
-    // Second apply the scale, now it is in UTM units but out of the center
-    // Third translate to the UTM reference
-
-    // Point2d p(UTMRef[0].x + (ImgP.x - imgRef[0].x)/UTM2Img_.x,
-    //           UTMRef[0].y + (ImgP.y - imgRef[0].y)/UTM2Img_.y);
+    // ROS_INFO("Img2UTM: pixel=(%.2f,%.2f) -> utm=(%.2f,%.2f) | UTMRef0=(%.2f,%.2f) imgRef0=(%.2f,%.2f) scale=(%.4f,%.4f)",
+    //          ImgP.x, ImgP.y, p.x, p.y,
+    //          UTMRef[0].x, UTMRef[0].y,
+    //          imgRef[0].x, imgRef[0].y,
+    //          UTM2Img_.x, UTM2Img_.y);
     return p;
 }
 
+// Point2d SatelliteManager::Img2UTM(const Point2d &ImgP) const
+// {
+//     // First bring img point to the origin (reference point 0)
+//     // Second apply the scale, now it is in UTM units but out of the center
+//     // Third translate to the UTM reference
+//     Point2d p(UTMRef[0].x + (ImgP.x - imgRef[0].x)/UTM2Img_.x,
+//               UTMRef[0].y + (ImgP.y - imgRef[0].y)/UTM2Img_.y);
+//     return p;
+// }
 
+// Point2d SatelliteManager::Img2UTM(const Point2d &ImgP) const
+// {
+//     static const cv::Mat M = (cv::Mat_<double>(3,3) << 
+//         2.23875619e-14, -6.7, -4297.5,
+//         -6.7, -2.66197567e-15, 2513.5,
+//         0.0,  0.0,             1.0);
+
+//     static cv::Mat M_inv;
+//     static bool computed = false;
+//     if(!computed) {
+//         cv::invert(M, M_inv);
+//         computed = true;
+//     }
+
+//     cv::Mat pt = (cv::Mat_<double>(3,1) << ImgP.x, ImgP.y, 1.0);
+//     cv::Mat res = M_inv * pt;
+
+//     return Point2d(res.at<double>(0, 0), res.at<double>(1, 0));
+// }
 
 void SatelliteManager::UTM2Img(Point2d *UTMpts, unsigned nPts)
 {
@@ -274,26 +307,49 @@ void SatelliteManager::parse2D_2_Point2d(const string &str, Point2d &p)
     p.y =y;
 }
 
+// void SatelliteManager::minMaxUTMValues(Point2d &min, Point2d &max)
+// {
+//     Point2d imgMin,imgMax,
+//            utmMin, utmMax;
+//     minMaxImgValues(imgMin,imgMax); // Coordenadas de img
+
+//     // Convert img points (pixel) to UTM points (meters)
+//     utmMin = Img2UTM(imgMin);
+//     utmMax = Img2UTM(imgMax);
+
+//     min.x = std::min(utmMin.x, utmMax.x);
+//     min.y = std::min(utmMin.y, utmMax.y);
+
+//     max.x = std::max(utmMin.x, utmMax.x);
+//     max.y = std::max(utmMin.y, utmMax.y);
+//     cout << "Punto max: " << max << endl;
+//     cout << "Punto min: " << max << endl;
+
+// }
+
 void SatelliteManager::minMaxUTMValues(Point2d &min, Point2d &max)
 {
-    Point2d imgMin,imgMax,
-           utmMin, utmMax;
-    minMaxImgValues(imgMin,imgMax); // Coordenadas de img
+    // Converte os 4 cantos da imagem
+    Point2d c1 = Img2UTM(Point2d(0, 0));
+    Point2d c2 = Img2UTM(Point2d(mapImg.cols, 0));
+    Point2d c3 = Img2UTM(Point2d(0, mapImg.rows));
+    Point2d c4 = Img2UTM(Point2d(mapImg.cols, mapImg.rows));
 
-    // Convert img points (pixel) to UTM points (meters)
-    utmMin = Img2UTM(imgMin);
-    utmMax = Img2UTM(imgMax);
-
-    min.x = std::min(utmMin.x, utmMax.x);
-    min.y = std::min(utmMin.y, utmMax.y);
-
-    max.x = std::max(utmMin.x, utmMax.x);
-    max.y = std::max(utmMin.y, utmMax.y);
+    // Pega o min e max real entre todos os cantos
+    min.x = std::min({c1.x, c2.x, c3.x, c4.x});
+    min.y = std::min({c1.y, c2.y, c3.y, c4.y});
+    max.x = std::max({c1.x, c2.x, c3.x, c4.x});
+    max.y = std::max({c1.y, c2.y, c3.y, c4.y});
 }
+
+
+
+
 
 void SatelliteManager::minMaxImgValues(Point2d &min, Point2d &max)
 {
     max = Point2d(mapImg.cols, mapImg.rows);
+    // cout << "Punto max: " << max << endl;
     min = Point2d(0.0,0.0);
 }
 
@@ -490,6 +546,125 @@ Mat SatelliteManager::cropRect(Point2f &imgP, float height, float width)
     return mapImg(brt).clone();
 }
 
+
+
+
+
+
+
+// Mat SatelliteManager::cropSonarFoV(Point2d p, double headingDegrees,
+//                                    double sonarRange, double FoV,
+//                                    bool doPositionAdjustment) const
+// {
+//     // Convertir heading a radianes y ajustar a convención matemática (norte = 90°)
+//     double headingRad = headingDegrees * M_PI / 180.0;
+//     double headingMath = headingRad - M_PI/2.0;  // Náutico → Matemático
+    
+//     // Obtener polígono del FoV del sonar
+//     int nPts = 15;
+//     Point pts[nPts];
+//     getSonarPolyOnImg(p, headingDegrees, pts, nPts, sonarRange, FoV);
+    
+//     // Calcular bounding box...
+//     // [código de bounding box igual al original]
+    
+//     // Recortar y ajustar bordes...
+//     // [código de recorte igual al original]
+    
+//     // Find the bounding box of the poly
+//     int maxX,maxY, minX, minY;
+//     maxX = minX = pts[0].x;
+//     maxY = minY = pts[0].y;
+
+//     for(int i = 1 ; i < nPts;i++)
+//     {
+//         if(maxX < pts[i].x) maxX = pts[i].x;
+//         else
+//         if(minX > pts[i].x) minX = pts[i].x;
+
+//         if(maxY < pts[i].y) maxY = pts[i].y;
+//         else
+//         if(minY > pts[i].y) minY = pts[i].y;
+//     }
+
+
+//     // A boding box rect with 3 extra pixels each side
+//     Rect rect(minX-3 , minY-3, maxX-minX+6, maxY-minY+6);
+
+//     int top,bottom, left,right;
+//     Rect rectThatFits = getRectThatFitsIntoImg(rect,mapImg,
+//                                                top,bottom,
+//                                                left,right);
+
+// //    cout << "Top " << top
+// //         << " bottom " << bottom
+// //         << " left " << left
+// //         << " right " << right << endl;
+
+//     if(rectThatFits.width==0 || rectThatFits.height ==0)
+//     {
+//         cout << "Sat image crop error! Desired crop out of the map!!" << endl;
+//         return Mat();
+//     }
+
+    
+//     Mat sonarFoVRect; // Recorte del mapa
+    
+//     if(doPositionAdjustment) {
+//         // Ajustar posición
+//         rect.x += left - right;
+//         rect.y += top - bottom;
+//         sonarFoVRect = mapImg(rect);
+//     } else {
+//         Mat cropThatFits = mapImg(rectThatFits);
+//         copyMakeBorder(cropThatFits, sonarFoVRect,
+//                        top, bottom, left, right,
+//                        BORDER_REFLECT_101);
+//     }
+    
+//     // Crear máscara del FoV del sonar
+//     Mat sonarMask(rect.height, rect.width, CV_8UC1, Scalar(0));
+//     int npts[] = {nPts};
+//     const Point* ppt[1] = {pts};
+//     fillPoly(sonarMask, ppt, npts, 1, Scalar(255),
+//              8, 0, Point(-rect.x, -rect.y));
+    
+//     // Aplicar máscara al recorte
+//     Mat sonFoVImg;
+//     sonarFoVRect.copyTo(sonFoVImg, sonarMask);
+    
+//     // CORRECCIÓN PRINCIPAL: Rotar para que el norte esté arriba
+//     // Usamos heading original (no corregido) para la rotación final
+//     double rotationAngle = -headingDegrees;  // Negativo para rotación horaria
+    
+//     // Centro de la imagen recortada
+//     Point2f center(sonFoVImg.cols / 2.0f, sonFoVImg.rows / 2.0f);
+    
+//     // Matriz de rotación
+//     Mat rotMatrix = getRotationMatrix2D(center, rotationAngle, 1.0);
+    
+//     // Calcular nuevo tamaño para contener toda la imagen rotada
+//     Rect bbox = RotatedRect(center, sonFoVImg.size(), rotationAngle).boundingRect();
+//     Mat rotatedImg;
+    
+//     // Ajustar matriz para centrar la imagen rotada
+//     rotMatrix.at<double>(0,2) += bbox.width/2.0 - center.x;
+//     rotMatrix.at<double>(1,2) += bbox.height/2.0 - center.y;
+    
+//     // Aplicar rotación
+//     warpAffine(sonFoVImg, rotatedImg, rotMatrix, bbox.size(), INTER_LINEAR);
+    
+//     // Devolver solo la mitad superior (donde está el FoV real)
+//     return rotatedImg(Rect(0, 0, rotatedImg.cols, rotatedImg.rows / 2));
+// }
+
+
+
+
+
+
+
+
 Mat SatelliteManager::cropSonarFoV(Point2d p, double headingDegrees,
                                    double sonarRange, double FoV,
                                    bool doPositionAdjustment) const
@@ -576,24 +751,68 @@ Mat SatelliteManager::cropSonarFoV(Point2d p, double headingDegrees,
                          );
 
     // ===== Rotating the FoV image regarding sonar heading =============
-    Size finalImgSize(abs(int(sonarFoVSize.x*UTM2Img_.x)),
-                      abs(int(sonarFoVSize.y*UTM2Img_.y)));
+    // Size finalImgSize(abs(int(sonarFoVSize.x*UTM2Img_.x)),
+    //                   abs(int(sonarFoVSize.y*UTM2Img_.y)));
 
-    Mat afimTransformMatrix = getRotationMatrix2D(sonarPositionOnResult, headingDegrees,1.0);
 
-    // Translation Correction
-    afimTransformMatrix.at<double>(0,2) += -sonarPositionOnResult.x+finalImgSize.width/2;
-    afimTransformMatrix.at<double>(1,2) += -sonarPositionOnResult.y+finalImgSize.height;
+    double avgScale = (fabs(UTM2Img_.x) + fabs(UTM2Img_.y)) / 2.0;
 
-    // Apply affine transform and warp the image
-    warpAffine( sonFoVImg,
-                sonFoVImg,
-                afimTransformMatrix,
-                finalImgSize,
-                INTER_NEAREST
-               );
+    // Tamanho final quadrado baseado na diagonal do FoV
+    double maxSize = abs(int(sonarRange * avgScale)) * 2;
+    Size finalImgSize(maxSize, maxSize * 1.5);
 
-    return sonFoVImg;
+    Mat afimTransformMatrix = getRotationMatrix2D(sonarPositionOnResult, headingDegrees, 1.0);
+
+    afimTransformMatrix.at<double>(0,2) += -sonarPositionOnResult.x + finalImgSize.width/2;
+    afimTransformMatrix.at<double>(1,2) += -sonarPositionOnResult.y + finalImgSize.height/2;
+
+    warpAffine(sonFoVImg, sonFoVImg, afimTransformMatrix, finalImgSize, INTER_NEAREST);
+
+    Mat rotated;
+    rotate(sonFoVImg, rotated, ROTATE_90_CLOCKWISE);
+    return rotated;
+
+
+
+
+    // double avgScale = (fabs(UTM2Img_.x) + fabs(UTM2Img_.y)) / 2.0;
+    // Size finalImgSize(abs(int(sonarFoVSize.y * avgScale)),   // ← trocado: y vira largura
+    //                   abs(int(sonarFoVSize.x * avgScale)));  // ← trocado: x vira altura
+
+    // Mat afimTransformMatrix = getRotationMatrix2D(sonarPositionOnResult, headingDegrees, 1.0);
+
+    // afimTransformMatrix.at<double>(0,2) += -sonarPositionOnResult.x + finalImgSize.width/2;
+    // afimTransformMatrix.at<double>(1,2) += -sonarPositionOnResult.y + finalImgSize.height/2;
+
+    // warpAffine(sonFoVImg, sonFoVImg, afimTransformMatrix, finalImgSize, INTER_NEAREST);
+
+    // Mat rotated;
+    // rotate(sonFoVImg, rotated, ROTATE_90_CLOCKWISE);
+    // return rotated;
+    
+
+    // double avgScale = (fabs(UTM2Img_.x) + fabs(UTM2Img_.y)) / 2.0;
+    // Size finalImgSize(abs(int(sonarFoVSize.x * avgScale)),
+    //               abs(int(sonarFoVSize.y * avgScale)));
+
+    // Mat afimTransformMatrix = getRotationMatrix2D(sonarPositionOnResult, headingDegrees,1.0);
+
+    // // Translation Correction
+    // afimTransformMatrix.at<double>(0,2) += -sonarPositionOnResult.x+finalImgSize.width/2;
+    // afimTransformMatrix.at<double>(1,2) += -sonarPositionOnResult.y + finalImgSize.height/2; // AQUI Modifique
+    // // afimTransformMatrix.at<double>(1,2) += -sonarPositionOnResult.y+finalImgSize.height;
+
+    // warpAffine( sonFoVImg,
+    //             sonFoVImg,
+    //             afimTransformMatrix,
+    //             finalImgSize,
+    //             INTER_NEAREST
+    //            );
+
+    // // Rotate 90 degrees clockwise
+    // Mat rotated;
+    rotate(sonFoVImg, rotated, ROTATE_90_CLOCKWISE);
+    return rotated;
 }
 
 /**

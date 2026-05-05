@@ -36,7 +36,11 @@ void ParticleFilterNode::drawParticle(Mat &img,
   int nPts = 15;
   Point pts[nPts];
 
-  sat.getSonarPolyOnImg(Point2d(p.x,p.y),p.theta*180.0/M_PI,
+  // sat.getSonarPolyOnImg(Point2d(p.x,p.y),p.theta*180.0/M_PI,
+  //                       pts,nPts,sonarRange,sonarFoV); 
+  // MODIFIQUE AQUI
+  sat.getSonarPolyOnImg(Point2d(p.x,p.y),
+                        90.0 - p.theta*180.0/M_PI,
                         pts,nPts,sonarRange,sonarFoV);
 
   int npts[] = {nPts};
@@ -122,6 +126,10 @@ bool ParticleFilterNode::setup()
 
 bool ParticleFilterNode::initPF()
 {
+
+  // ROS_INFO("initPF called: initialized=%d hasFirstPose=%d pfInitMode=%d",
+  //         pf->initialized(), hasFirstPose, pfInitMode);
+
   if(!pf->initialized())
   {
     if(!hasFirstPose)
@@ -193,15 +201,30 @@ void ParticleFilterNode::iniPFWithGuess(double x, double y, double theta)
   // minMapP.y += sonarRange;
   // maxMapP.x -= sonarRange;
   // maxMapP.y -= sonarRange;
+  
+  // DESCOMENTAR TEMPORALMENTE
+  ROS_INFO("Pose inicial: x=%.4f y=%.4f theta=%.4f", x, y, theta);
+  ROS_INFO("Limites mapa: min=(%.4f, %.4f) max=(%.4f, %.4f)",
+           minMapP.x, minMapP.y, maxMapP.x, maxMapP.y);
+           
+
 
   double sigma_pos_initialization[] = { 30.0,30.0,0.01};
 
+  double marginX = (maxMapP.x - minMapP.x) * 0.1; // 10% do tamanho em X
+  double marginY = (maxMapP.y - minMapP.y) * 0.1; // 10% do tamanho em Y
 
-
-  pf->init(x,y,theta,sigma_pos_initialization,
+  pf->init(x, y, theta, sigma_pos_initialization,
           lastTime,
-          minMapP.x,minMapP.y,
-          maxMapP.x,maxMapP.y);
+          minMapP.x + marginX,
+          minMapP.y + marginY,
+          maxMapP.x - marginX,
+          maxMapP.y - marginY);
+
+  // pf->init(x,y,theta,sigma_pos_initialization,
+  //         lastTime,
+  //         minMapP.x,minMapP.y,
+  //         maxMapP.x,maxMapP.y);
 }
 
 void ParticleFilterNode::sonCallback(const sensor_msgs::ImageConstPtr &msg)
@@ -305,6 +328,9 @@ void ParticleFilterNode::poseCallback(const geometry_msgs::PoseStamped &msg)
   lastYaw = yaw;
   lastTime = time;
   hasFirstPose = true;
+  
+  // ROS_INFO("poseCallback: x=%.2f y=%.2f initialized=%d",
+  //          px, py, pf->initialized());  // ← AGREGAR ESTO
 
   if(!pf->initialized())
   {
@@ -333,8 +359,11 @@ void ParticleFilterNode::poseCallback(const geometry_msgs::PoseStamped &msg)
 
     // This is the global velocity
     // now we are converting to local velocity
-    double lvx = vx * sin(yaw) + vy*cos(yaw),
-           lvy =-vx * cos(yaw) + vy*sin(yaw);
+    // double lvx = vx * sin(yaw) + vy*cos(yaw), // MOdifique 
+    //        lvy =-vx * cos(yaw) + vy*sin(yaw);
+
+    double lvx =  vx * cos(yaw) + vy * sin(yaw);
+    double lvy = -vx * sin(yaw) + vy * cos(yaw);
 
     // Vehicle max speed is 0.65 m/s (Truncated vel.)
     // Odom 4 vel
@@ -496,7 +525,7 @@ void ParticleFilterNode::updateMapView(const ros::Time &time)
 
     drawParticle(screen,
                  p,txt,
-                 Scalar(128,255,128),6);
+                 Scalar(128,255,128),3);
   }
 
   // Draw GT
@@ -504,11 +533,15 @@ void ParticleFilterNode::updateMapView(const ros::Time &time)
     Particle p;
     p.x = lastX; p.y = lastY;
     p.theta = lastYaw;
+    // cout << "Angulo !"<< lastYaw << endl;
+
+
+
     txt="GT";
 
     drawParticle(screen,
                  p,txt,
-                 Scalar(0,255,255),12);
+                 Scalar(0,255,255),4);
   }
 
   // Draw best particle
@@ -519,7 +552,7 @@ void ParticleFilterNode::updateMapView(const ros::Time &time)
 
     drawParticle(screen,
              p,format("PF_Best"),
-             Scalar(0,0,0),12);
+             Scalar(0,0,0),5);
   }
 
   // Resize img
@@ -796,8 +829,12 @@ void ParticleFilterNode::evaluateParticlesObservation(const ros::Time &time)
                                p.theta*180/M_PI,
                                sonarRange,
                                130.0);
+
+
     if(img.empty())
     {
+      ROS_WARN("Could not crop sat img for particle %d at (%.2f,%.2f) - trying fallback", 
+             i, p.x, p.y);
       ROS_ERROR("Could not crop sat img, Si es");
       continue;
     }

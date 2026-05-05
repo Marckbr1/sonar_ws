@@ -141,9 +141,14 @@ void SimplePF::prediction(double time,
 
     // Update the position x, y and angle theta of the particle
     // considering body local velocity and global absolute position
-    double co = cos(p.theta), so=sin(p.theta);
-    p.x +=  dx*so -dy*co;
-    p.y +=  dx*co +dy*so;
+    // double co = cos(p.theta), so=sin(p.theta); // CAMBIE
+    // p.x +=  dx*so -dy*co;
+    // p.y +=  dx*co +dy*so;
+
+    double co = cos(p.theta), so = sin(p.theta);
+
+    p.x += dx * co - dy * so;
+    p.y += dx * so + dy * co;
     p.theta += dYaw;
 
     // Add random gaussian noise for each of the above updated measurements
@@ -368,11 +373,15 @@ void SimplePF::newParticleFromRandomMap(Particle &p)
 
   for(attemps = 0; attemps < 10; attemps++)
   {
+    // std::cout << "minX: " << minX << " maxX: " << maxX << std::endl;
     p.x = (rand()%xRange)*1e-2 +minX;
     p.y = (rand()%yRange)*1e-2 +minY;
     p.theta = (rand()%thetaRange)*1e-3 - M_PI;
+    // std::cout << "x: " << p.x << " y: " << p.y << std::endl;
+    // Point2d pix = map.UTM2Img(Point2d(p.x, p.y));
 
     if(!isParticleOk(p))
+    
       continue;
 
     // All good, the new particle was created

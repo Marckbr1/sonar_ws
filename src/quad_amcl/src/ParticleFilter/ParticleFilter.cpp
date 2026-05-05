@@ -132,18 +132,48 @@ bool inMap(const Particle &p, const SatelliteManager &map,
          map.getPixel(p4,pix);
 }
 
+// bool seeSomething(const Particle &p,
+//                 const SatelliteManager &map,
+//                 double sonBearing, double sonRange)
+// {
+//   Mat img = map.cropSonarFoV(Point2d(p.x,p.y),
+//                          p.theta*180/M_PI,
+//                          sonRange,
+//                          sonBearing);
+//   Mat bgr[3];
+//   split(img,bgr);
+
+//   int count = countNonZero(bgr[1]);
+
+//   return count > 20;
+// }
+
 bool seeSomething(const Particle &p,
                 const SatelliteManager &map,
                 double sonBearing, double sonRange)
 {
+  // Mat img = map.cropSonarFoV(Point2d(p.x,p.y),
+  //                        p.theta*180/M_PI,
+  //                        sonRange,
+  //                        sonBearing);
+  // MODIFIQUE AQUI
   Mat img = map.cropSonarFoV(Point2d(p.x,p.y),
-                         p.theta*180/M_PI,
+                         90.0 - p.theta*180/M_PI, 
                          sonRange,
                          sonBearing);
+
+
+
+  // *** PROTEÇÃO contra imagem vazia ***
+  if(img.empty() || img.cols == 0 || img.rows == 0)
+    return false;
+
   Mat bgr[3];
-  split(img,bgr);
+  split(img, bgr);
+
+  if(bgr[1].empty())
+    return false;
 
   int count = countNonZero(bgr[1]);
-
   return count > 20;
 }

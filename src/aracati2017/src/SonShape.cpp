@@ -1,5 +1,9 @@
 #include "SonShape.h"
 
+#include <opencv2/opencv.hpp>
+using namespace cv;
+
+
 /**
  * @brief SonShape::getPoints - Return points on current heading
  * "heading" and position "p". All points are in UTM.
@@ -91,9 +95,9 @@ void SonShape::initShape(double opening,
       kPts++;
   }
   // Al final de initShape, imprime los primeros y últimos puntos
-  ROS_INFO("SonShape inicializado: opening=%.1f°, maxRange=%.1f", opening, maxRange);
-  ROS_INFO("Punto central (adelante): (%.2f, %.2f)", m_pts[7].x, m_pts[7].y);
-  ROS_INFO("Punto de máxima distancia Y: %.2f", m_pts[7].y);
+  // ROS_INFO("SonShape inicializado: opening=%.1f°, maxRange=%.1f", opening, maxRange);
+  // ROS_INFO("Punto central (adelante): (%.2f, %.2f)", m_pts[7].x, m_pts[7].y);
+  // ROS_INFO("Punto de máxima distancia Y: %.2f", m_pts[7].y);
 
 
 }
@@ -108,7 +112,11 @@ void SonShape::drawPoly(Mat &img,
   // ROS_INFO("=== drawPoly DEBUG ===");
   // ROS_INFO("UTMPosition: (%.2f, %.2f)", UTMPosition.x, UTMPosition.y);
   // ROS_INFO("Heading: %.2f rad", heading);
+
   heading = heading - M_PI/2.0;
+  // ROS_INFO("=== drawPoly DEBUG ===");
+  // ROS_INFO("UTMPosition: (%.2f, %.2f)", UTMPosition.x, UTMPosition.y);
+  // ROS_INFO("Heading: %.2f rad", heading);
   vector<Point2d> newPts;
   getPoints(newPts,heading,UTMPosition);
 
@@ -178,191 +186,78 @@ void SonShape::drawPoly(Mat &img,
 
 
 Mat SonShape::cropSonShape(const AerialImage &ai,
-                          const Point2d &UTMPosition,
-                          double heading)
+                           const Point2d &UTMPosition,
+                           double heading)
 {
- vector<Point2d> newPts;
- heading = heading - M_PI/2.0;
- getPoints(newPts, heading, UTMPosition);
+  // Náutico → matemático
+  const double headingMath = heading - M_PI/2.0;
 
+  // Posición del vehículo en píxeles y ratio UTM→imagen
+  const Point2d centerImg  = ai.UTM2Img(UTMPosition);
+  const Point2d utm2Img    = ai.UTM2ImgRatio();
 
+  // Recorte cuadrado fijo centrado en el vehículo
+  const int halfW = abs(int(m_range * utm2Img.x));
+  const int halfH = abs(int(m_range * utm2Img.y));
 
-  // cout << "=== PUNTOS DEL POLIGONO (UTM) ===" << endl;
-  // for(uint i = 0; i < newPts.size(); i++)
-  // {
-  //     cout << "Punto " << i << ": (" << newPts[i].x << ", " << newPts[i].y << ")" << endl;
-  // }
-  // cout << "================================" << endl;
+  Rect rect(int(centerImg.x) - halfW - 3,
+            int(centerImg.y) - halfH - 3,
+            halfW * 2 + 6,
+            halfH * 2 + 6);
 
- int numPts = newPts.size();
- vector<Point> pts(numPts);
- Point minP, maxP;
+  // Ajustar si se sale del mapa
+  int top, bottom, left, right;
+  const Rect rectThatFits = ai.getTranslateRectToFit(rect, top, bottom, left, right);
 
+  if(rectThatFits.width == 0 || rectThatFits.height == 0) {
+    cout << "Sat image crop error! Desired crop out of the map!!" << endl;
+    return Mat();
+  }
 
- // Convertir puntos UTM a píxeles
- for(uint i = 0; i < newPts.size(); i++)
- {
-   const Point2d &imgP = ai.UTM2Img(newPts[i]);
-   Point &nP = pts[i];
+  // Recortar y rellenar bordes
+  Mat sonarFoVRect;
+  copyMakeBorder(ai.getMapImg()(rectThatFits), sonarFoVRect,
+                 top, bottom, left, right,
+                 BORDER_REFLECT_101);
 
+  // Máscara del FoV rotado según heading
+  vector<Point2d> newPts;
+  getPoints(newPts, headingMath, UTMPosition);
 
-   nP = Point(round(imgP.x), round(imgP.y));
-   // IMPRIMIR CADA PUNTO CONVERTIDO
-  //  cout << "Punto " << i << ": UTM(" << newPts[i].x << ", " << newPts[i].y 
-  //       << ") -> Pixel(" << nP.x << ", " << nP.y << ")" << endl;
+  const int numPts = newPts.size();
+  vector<Point> pts(numPts);
+  for(int i = 0; i < numPts; i++) {
+    const Point2d& imgP = ai.UTM2Img(newPts[i]);
+    pts[i] = Point(round(imgP.x), round(imgP.y));
+  }
 
-   if(i == 0)
-   {
-     minP = maxP = nP;
-   }
-   else
-   {
-     if(minP.x > nP.x) minP.x = nP.x;
-     if(minP.y > nP.y) minP.y = nP.y;
-     if(maxP.x < nP.x) maxP.x = nP.x;
-     if(maxP.y < nP.y) maxP.y = nP.y;
-   }
- }
+  Mat sonarMask(rect.height, rect.width, CV_8UC1, Scalar(0));
+  const Point* ppt[1] = { pts.data() };
+  int npts[] = { numPts };
+  fillPoly(sonarMask, ppt, npts, 1, Scalar(255),
+           LINE_8, 0, Point(-rect.x, -rect.y));
 
+  // Aplicar máscara
+  Mat sonFoVImg;
+  sonarFoVRect.copyTo(sonFoVImg, sonarMask);
 
+  // Corregir orientación → siempre norte arriba
+  const double angleDeg = -(heading) * 180.0 / M_PI; // heading original sin -π/2
+  const Point2f center(sonFoVImg.cols / 2.0f, sonFoVImg.rows / 2.0f);
+  Mat sonFoVImgNorth;
+  warpAffine(sonFoVImg, sonFoVImgNorth,
+             getRotationMatrix2D(center, angleDeg, 1.0),
+             sonFoVImg.size(), INTER_LINEAR);
 
-//  // ============================================================
-//  // IMPRIMIR RECTÁNGULO DELIMITADOR (sin margen)
-//  // ============================================================
-//  cout << "\n=== RECTANGULO DELIMITADOR (sin margen) ===" << endl;
-//  cout << "minP: (" << minP.x << ", " << minP.y << ")" << endl;
-//  cout << "maxP: (" << maxP.x << ", " << maxP.y << ")" << endl;
-//  cout << "width: " << (maxP.x - minP.x) << ", height: " << (maxP.y - minP.y) << endl;
-//  cout << "===========================================" << endl;
-
- // Calcular el centro del sonar (posición del robot)
- Point2d sonarPositionOnImg = ai.UTM2Img(UTMPosition);
-  // Calcular rectángulo delimitador con margen
- int margin = 100;
- Rect rect(minP, maxP);
- rect.x -= margin;
- rect.y -= margin;
- rect.width += 2 * margin;
- rect.height += 2 * margin;
-
- cout << "\n=== RECTANGULO CON MARGEN (" << margin << " pixeles) ===" << endl;
- cout << "x: " << rect.x << ", y: " << rect.y << endl;
- cout << "width: " << rect.width << ", height: " << rect.height << endl;
- cout << "esquina superior izquierda: (" << rect.x << ", " << rect.y << ")" << endl;
- cout << "esquina inferior derecha: (" << rect.x + rect.width << ", " << rect.y + rect.height << ")" << endl;
-
- // Asegurar que el rectángulo esté dentro de la imagen
- Rect imageRect(0, 0, ai.getMapImg().cols, ai.getMapImg().rows);
- Rect rectThatFits = rect & imageRect;
-
-
- if(rectThatFits.width <= 0 || rectThatFits.height <= 0)
- {
-     cout << "Sat image crop error!" << endl;
-     return Mat();
- }
-
-
- // Calcular padding
- int top = max(0, rect.y - rectThatFits.y);
- int bottom = max(0, (rect.y + rect.height) - (rectThatFits.y + rectThatFits.height));
- int left = max(0, rect.x - rectThatFits.x);
- int right = max(0, (rect.x + rect.width) - (rectThatFits.x + rectThatFits.width));
-
-
- // Recortar la imagen
- Mat cropThatFits = ai.getMapImg()(rectThatFits);
-
-
- // Aplicar padding
- Mat sonarFoVRect;
- if(top > 0 || bottom > 0 || left > 0 || right > 0)
- {
-   copyMakeBorder(cropThatFits, sonarFoVRect,
-                  top, bottom, left, right,
-                  BORDER_REFLECT_101);
- }
- else
- {
-   sonarFoVRect = cropThatFits;
- }
-
-
- // Ajustar puntos al nuevo sistema de coordenadas
- vector<Point> adjustedPts(pts.size());
- for(size_t i = 0; i < pts.size(); i++)
- {
-   adjustedPts[i] = Point(pts[i].x - rect.x + left,
-                          pts[i].y - rect.y + top);
- }
-
-
- // Posición del sonar en el sistema de coordenadas recortado
- Point2d sonarPosOnCrop(sonarPositionOnImg.x - rect.x + left,
-                        sonarPositionOnImg.y - rect.y + top);
-
-
- // === ENDEREZAR LA IMAGEN (rotación inversa) ===
- // Rotar la imagen para que el sonar siempre apunte hacia arriba
- double headingDeg = heading * 105.0 / M_PI;
-  // Matriz de rotación (rotación negativa para enderezar)
- Mat rotMatrix = getRotationMatrix2D(sonarPosOnCrop, -headingDeg, 1.0);
-  // Calcular nuevo tamaño después de rotar
- Rect boundingRot = RotatedRect(sonarPosOnCrop, sonarFoVRect.size(), -headingDeg).boundingRect();
- Mat rotated;
- warpAffine(sonarFoVRect, rotated, rotMatrix, boundingRot.size(), INTER_LINEAR);
-  // Ajustar los puntos rotados
- vector<Point> rotatedPts(adjustedPts.size());
- for(size_t i = 0; i < adjustedPts.size(); i++)
- {
-   // Transformar cada punto con la matriz de rotación
-   rotatedPts[i].x = rotMatrix.at<double>(0,0) * adjustedPts[i].x +
-                     rotMatrix.at<double>(0,1) * adjustedPts[i].y +
-                     rotMatrix.at<double>(0,2);
-   rotatedPts[i].y = rotMatrix.at<double>(1,0) * adjustedPts[i].x +
-                     rotMatrix.at<double>(1,1) * adjustedPts[i].y +
-                     rotMatrix.at<double>(1,2);
- }
-  // Posición del sonar en la imagen rotada
- Point2d sonarPosOnRotated;
- sonarPosOnRotated.x = rotMatrix.at<double>(0,0) * sonarPosOnCrop.x +
-                       rotMatrix.at<double>(0,1) * sonarPosOnCrop.y +
-                       rotMatrix.at<double>(0,2);
- sonarPosOnRotated.y = rotMatrix.at<double>(1,0) * sonarPosOnCrop.x +
-                       rotMatrix.at<double>(1,1) * sonarPosOnCrop.y +
-                       rotMatrix.at<double>(1,2);
-
-
- // Crear máscara con la forma del sonar (ahora enderezada)
- Mat mask(rotated.size(), CV_8UC1, Scalar(0));
- vector<vector<Point>> contours = {rotatedPts};
- fillPoly(mask, contours, Scalar(255));
-
-
- // Aplicar máscara
- Mat result;
- rotated.copyTo(result, mask);
-
-
- // Recortar para eliminar bordes negros
- Mat gray;
- cvtColor(result, gray, COLOR_BGR2GRAY);
- vector<Point> nonZeroPoints;
- findNonZero(gray, nonZeroPoints);
-  if(!nonZeroPoints.empty())
- {
-   Rect contentRect = boundingRect(nonZeroPoints);
-   // Añadir pequeño margen
-   contentRect.x = max(0, contentRect.x - 10);
-   contentRect.y = max(0, contentRect.y - 10);
-   contentRect.width = min(result.cols - contentRect.x, contentRect.width + 20);
-   contentRect.height = min(result.rows - contentRect.y, contentRect.height + 20);
-   result = result(contentRect).clone();
- }
-
-
- return result;
+  // Devolver solo la mitad superior (área del FoV)
+  return sonFoVImgNorth(Rect(0, 0, sonFoVImgNorth.cols, sonFoVImgNorth.rows / 2));
 }
+
+
+
+
+
+
 
 
 
@@ -370,118 +265,107 @@ Mat SonShape::cropSonShape(const AerialImage &ai,
 //                            const Point2d &UTMPosition,
 //                            double heading)
 // {
+//   heading = heading - M_PI/2.0;
+//   // Convertir posición UTM a píxel
+//   Point2d centerImg = ai.UTM2Img(UTMPosition);
+//   Point2d Utm2Img = ai.UTM2ImgRatio();
+
+//   // Tamaño fijo basado en el rango del sonar
+//   int halfW = abs(int(m_range * Utm2Img.x));
+//   int halfH = abs(int(m_range * Utm2Img.y));
+
+//   // Recorte fijo centrado en el vehículo — nunca rota
+//   Rect rect(
+//     int(centerImg.x) - halfW,
+//     int(centerImg.y) - halfH,
+//     halfW * 2,
+//     halfH * 2
+//   );
+//   rect.x -= 3; rect.y -= 3; rect.width += 6; rect.height += 6; 
+
+//   int top, bottom, left, right;
+//   Rect rectThatFits = ai.getTranslateRectToFit(rect, top, bottom, left, right); // Ajuste del rectangulo 
+
+//   if(rectThatFits.width == 0 || rectThatFits.height == 0) {
+//     cout << "Sat image crop error! Desired crop out of the map!!" << endl;
+//     return Mat();
+//   }
+
+//   Mat cropThatFits = ai.getMapImg()(rectThatFits); // imagen rectangular 
+
+//   // imshow("crop", cropThatFits);
+//   // waitKey(0);  // espera una tecla
+
+//   Mat sonarFoVRect;
+
+//   // imshow("crop", sonarFoVRect); // Es vacio
+//   // waitKey(0);  // espera una tecla
+  
+//   copyMakeBorder(cropThatFits, sonarFoVRect,
+//                  top, bottom, left, right,
+//                  BORDER_REFLECT_101);
+  
+//   // imshow("rect", sonarFoVRect);
+//   // waitKey(0);
+
+
+//   // Máscara con el FoV real (rotado según heading)
 //   vector<Point2d> newPts;
-//   getPoints(newPts,heading,UTMPosition);
+//   getPoints(newPts, heading, UTMPosition);
 
 //   int numPts = newPts.size();
-//   Point pts[newPts.size()],
-//       minP,maxP;
-
-
+//   Point pts[numPts];
 //   for(uint i = 0; i < newPts.size(); i++)
 //   {
 //     const Point2d &imgP = ai.UTM2Img(newPts[i]);
-//     Point &nP = pts[i];
-
-//     nP = Point(round(imgP.x),
-//                round(imgP.y));
-//     if(i==0)
-//     {
-//       minP = maxP = nP;
-//     }else
-//     {
-//       if(minP.x > nP.x) minP.x = nP.x;
-//       if(minP.y > nP.y) minP.y = nP.y;
-//       if(maxP.x < nP.x) maxP.x = nP.x;
-//       if(maxP.y < nP.y) maxP.y = nP.y;
-//     }
+//     pts[i] = Point(round(imgP.x), round(imgP.y));
 //   }
 
-
-
-//   // Point2d imgPos = ai.UTM2Img(UTMPosition);
-
-//   // cout << "Image size: " << ai.getMapImg().cols << " x " << ai.getMapImg().rows << endl;
-//   // cout << "Sonar pixel position: " << imgPos.x << " , " << imgPos.y << endl;
-
-
-//   // // AQUÍ VA EL CÓDIGO NUEVO
-//   // if(imgPos.x < 0 || imgPos.x >= ai.getMapImg().cols ||
-//   //   imgPos.y < 0 || imgPos.y >= ai.getMapImg().rows)
-//   // {
-//   //     cout << "Sonar outside map, skipping frame" << endl;
-//   //     return Mat();
-//   // }
-
-
-
-//   // Crop sat img
-//   // A boding box rect with 3 extra pixels each side
-//   Rect rect(minP,maxP);
-//   rect.x-=3; rect.y-=3; rect.width+=6; rect.height+=6;
-
-//   // Find roi that fits
-//   int top,bottom, left,right;
-//   Rect rectThatFits = ai.getTranslateRectToFit(rect,
-//                                              top,bottom,
-//                                              left,right);
-
-//   if(rectThatFits.width==0 || rectThatFits.height ==0)
-//   {
-//       cout << "Sat image crop error! Desired crop out of the map!!" << endl;
-//       return Mat();
-//   }
-
-//   Mat sonarFoVRect; // Rect crop from the map
-
-//   // Fill the missing part with padding
-//   Mat cropThatFits = ai.getMapImg()(rectThatFits);
-
-//   copyMakeBorder(cropThatFits,sonarFoVRect,
-//                  top,bottom,left,right,
-//                  BORDER_REFLECT_101);
-
-//   // Transform the sonar FoV poly in an image mask
-//   Mat sonarMask(rect.height, rect.width,CV_8UC1,Scalar(0));
-
+//   Mat sonarMask(rect.height, rect.width, CV_8UC1, Scalar(0)); // Es una imagen de color negro
 //   int npts[] = {numPts};
 //   const Point* ppt[1] = { pts };
-//   fillPoly(sonarMask,ppt,npts,1,Scalar(255),
-//            LINE_8,0,Point(-rect.x,-rect.y));
+//   fillPoly(sonarMask, ppt, npts, 1, Scalar(255),
+//            LINE_8, 0, Point(-rect.x, -rect.y));
+  
+//   // 255 blanco
+//   // 0 negro
+//   // 
 
-//   // Create the image correspondent of the sonar FoV
+//   // Después de fillPoly
+//   // imshow("Sonar Mask", sonarMask);
+//   // waitKey(0);
+//   // ROS_INFO("Heading: %.2f rad", heading);
+//   // ROS_INFO("Otro Heading: %.2f rad", heading - M_PI/2.0);
+//   // Aplicar máscara — recorte siempre fijo, solo la máscara rota
 //   Mat sonFoVImg;
-//   sonarFoVRect.copyTo(sonFoVImg,sonarMask);
+//   sonarFoVRect.copyTo(sonFoVImg, sonarMask);
 
-//   // Compute Sonar Position on each coordinate system
-//   double FoVRad = m_openning*M_PI/180.0;
+//   // Mat sonFoVImg;
+//   // sonarFoVRect.copyTo(sonFoVImg, sonarMask);
 
-//   Point2d sonarPositionOnImg(ai.UTM2Img(UTMPosition)),
-//           sonarPositionOnResult( sonarPositionOnImg.x - rect.x,
-//                                  sonarPositionOnImg.y - rect.y),
-//           sonarFoVSize(2*m_range*cos(M_PI_2-(FoVRad/2.0)), // width
-//                        m_range // Height
-//                        );
+//   // heading ya tiene aplicado -M_PI/2 al inicio de la función
+//   // entonces la corrección es exactamente -heading convertido a grados
+//   double angle_deg = -(heading + M_PI/2.0) * 180.0 / M_PI;
 
-//   // ===== Rotating the FoV image regarding sonar heading =============
-//   Point2d Utm2Img = ai.UTM2ImgRatio();
-//   Size finalImgSize(abs(int(sonarFoVSize.x*Utm2Img.x)),
-//                     abs(int(sonarFoVSize.y*Utm2Img.y)));
+//   Point2d center(sonFoVImg.cols / 2.0, sonFoVImg.rows / 2.0);
+//   Mat rotMat = cv::getRotationMatrix2D(center, angle_deg, 1.0);
 
-//   Mat afimTransformMatrix = getRotationMatrix2D(sonarPositionOnResult,
-//                                                 heading*180.0/M_PI,1.0);
+//   Mat sonFoVImgNorth;
+//   warpAffine(sonFoVImg, sonFoVImgNorth, rotMat, 
+//             sonFoVImg.size(), INTER_LINEAR);
 
-//   // Translation Correction
-//   afimTransformMatrix.at<double>(0,2) += -sonarPositionOnResult.x+finalImgSize.width/2;
-//   afimTransformMatrix.at<double>(1,2) += -sonarPositionOnResult.y+finalImgSize.height;
+//   // return sonFoVImgNorth;
 
-//   // Apply affine transform and warp the image
-//   warpAffine( sonFoVImg,
-//               sonFoVImg,
-//               afimTransformMatrix,
-//               finalImgSize,
-//               INTER_NEAREST
-//              );
+//   Rect roi(0, 0, sonFoVImgNorth.cols, sonFoVImgNorth.rows / 2);
+//   Mat half = sonFoVImgNorth(roi);
 
-//   return sonFoVImg;
+//   return half;
+
+
+
+
 // }
+
+
+
+

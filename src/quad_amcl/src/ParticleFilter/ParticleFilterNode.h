@@ -105,12 +105,12 @@ private:
   Mat lastSonSmall;
   double lastTime, lastX, lastY, lastYaw;
   double vx=0.0,vy=0.0,vYaw=0.0;
-  double sonarRange=50.0, sonarFoV=130.0;
+  double sonarRange=10.0, sonarFoV=130.0;
   Mat colors; // Color map (Used by draw functions)
 
   bool doTest=false;
   bool disableOrientation=true;
-  bool removeSatteliteOffset=true;
+  bool removeSatteliteOffset=false; // AQUI MODIFICQUE
 
   // ===== Satellite image stuff =====
   SatelliteManager sat;
